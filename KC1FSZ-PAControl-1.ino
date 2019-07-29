@@ -18,9 +18,9 @@
 #include <DallasTemperature.h>
 
 // How often we look at the temperature
-#define TEMP_INTERVAL_MS (2 * 1000)
+#define TEMP_INTERVAL_MS (5 * 1000)
 // How often we update the display
-#define DISPLAY_INTERVAL_MS (100)
+#define DISPLAY_INTERVAL_MS (5 * 1000)
 
 // CHANGE THESE ACCORDING TO WHAT PINS YOU ARE USING:
 #define ONE_WIRE_BUS 2 
@@ -40,7 +40,9 @@ TM1638plus tm(TM1638_STROBE_TM,TM1638_CLOCK_TM,TM1638_DIO_TM);
 
 DebouncedSwitch3 Debouncer0(10);
 DebouncedSwitch3 Debouncer1(10);
+DebouncedSwitch3 Debouncer2(10);
 
+int FanSpeed = 0;
 int Level = 0;
 int Temp = 0;
 long LastTempSampleStamp = 0;
@@ -79,6 +81,7 @@ void spiWrite(int address, int value) {
 }
 
 void updateDisplay() {
+  LastDisplayStamp = millis();
   DisplaySequence++;
   char buffer[9];
   /*
@@ -131,19 +134,22 @@ void loop() {
   
   Debouncer0.loadSample((buttons & 2) != 0);
   Debouncer1.loadSample((buttons & 1) != 0);
+  Debouncer2.loadSample((buttons & 4) != 0);
 
   if (millis() - LastTempSampleStamp > TEMP_INTERVAL_MS) {
     LastTempSampleStamp = millis();
     Sensors.requestTemperatures();
     Temp = (int)Sensors.getTempFByIndex(0);
-    if (Temp > 81) { 
+    if (Temp > 90) { 
+      analogWrite(FAN_CONTROL_PIN,128);
+    } else if (Temp > 95) {
       analogWrite(FAN_CONTROL_PIN,255);
     } else {
       analogWrite(FAN_CONTROL_PIN,0);
     }
   }
+  
   if (millis() - LastDisplayStamp > DISPLAY_INTERVAL_MS) {
-    LastDisplayStamp = millis();
     updateDisplay();
   }
   
@@ -151,12 +157,22 @@ void loop() {
     if (Level < 255) {
       Level++;
       updateBias();
+      updateDisplay();
     }
   }
   if (Debouncer1.getState() /*&& Debouncer1.isEdge()*/) {
     if (Level > 0) {
       Level--;
       updateBias();
+      updateDisplay();
     }
+  }
+  if (Debouncer2.getState() && Debouncer2.isEdge()) {
+    if (FanSpeed == 0) {
+      FanSpeed = 255;
+    } else {
+      FanSpeed = 0;  
+    }
+    analogWrite(FAN_CONTROL_PIN,FanSpeed);
   }
 }
